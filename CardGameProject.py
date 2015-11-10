@@ -33,6 +33,21 @@ class Deck():
             for val in range(1, 14):
                 self.cards.append(Card(suit, val))
     
+
+    #Return a dictionary of how many of each value card there are
+    def mostAbundant(self):
+        cardAbundance = [0] *14
+        for card in self.cards:
+            cardAbundance[card.value]+=1
+        abundance = {3:[], 2:[], 1:[]}
+        for i in range(1, len(cardAbundance)):
+            try:
+                abundance[cardAbundance[i]].append(i)
+            except KeyError:
+                continue
+        return abundance
+            
+    
     def shuffle(self):
         newDeck = []
         size = len(self.cards)
@@ -71,6 +86,10 @@ class Deck():
                 matches[card.value] = []
         for each in removed:
             self.removeCard(each)
+        
+        if len(removed) >= 1:
+            print(self.name+" scored a set of "+str(removed[0].value)+"\'s")
+            
         return removed
                 
         
@@ -192,7 +211,7 @@ class Player:
     def setDeck(self, deck):
         self.deck = deck
     
-    def ask(self, card):
+    def ask(self, name, card):
         result = []
         for each in self.deck.cards:
             if each.value == card:
@@ -208,13 +227,32 @@ class Computer(Player):
     def __init__ (self, mode):
         self.mode = mode
         name = self.names.pop(randint(0, len(self.names)-1))
-        super().__init__(name)  
+        super().__init__(name)
+        self.otherPlayers = []
     
-    def play(self):
-        
+    def setOtherPlayers(self, players):
+        for each in players:
+            if self != each:
+                self.otherPlayers.append(each)     
+    
+    #returns player to ask and which card to ask for 
+    def getPlay(self):
+        wanted = self.deck.mostAbundant()
         if self.mode == "Easy":
-            return
-        
+            if len(wanted[3]) != 0:
+                card = wanted[3][0] 
+            elif len(wanted[2]) != 0:
+                card = wanted[2][0] 
+            else:
+                card = wanted[1][0]
+            
+            if len(self.otherPlayers) == 1:
+                target = self.otherPlayers[0]
+            else:
+                target = self.otherPlayers[randint(0, len(self.otherPlayers)-1)]
+            
+            return target, card
+            
         elif self.mode == "Med":
             return
         
@@ -223,7 +261,7 @@ class Computer(Player):
 
 class Memories:
     def __init__(self):
-        self.memory = {1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[], 8:[], 9:[], 10:[], 11:[], 12:[], 12:[]}
+        self.memory = {1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[], 8:[], 9:[], 10:[], 11:[], 12:[], 13:[]}
     
     def addMemory(self, asker, card):
         alreadyThere = False
@@ -237,8 +275,14 @@ class Memories:
     def removeMemory(self, asker, card):
         if asker in self.memory[card]:
             self.memory[card].remove(asker)
+    
+    #Returns who asked for a certain value card
+    def whoAsked(self, card):
+        asked = self.memory[card]
+        return asked
             
 mem = Memories()
+gPlayers = []
 
 def main():
     #Intro to game
@@ -282,8 +326,13 @@ def main():
         print(each.name)
         print(each.deck)
 
+    for each in players:
+        if type(each) == Computer:
+            each.setOtherPlayers(players)
+
     while discarded.getSize() < 52:    #Play the game while there are still cards to play 
         for p in players:              #Give each player a turn
+            goFish = False
             while not goFish:          #While still not told to go fish
                 if type(p) == Player:  #If human user's turn, not CPU
                     scored = p.deck.hasFour()
@@ -324,23 +373,34 @@ def main():
                     except ValueError:
                         print("That's not a number!")
                         continue
-                    
-                    global mem
-                    mem.addMemory(p, askedFor)
-                    
-                    result = asked.ask(askedFor)
-                    
-                    if len(result) >= 1:  #If the CPU asked had what the user asked for
-                        #Add the cards to the user's hand
-                        for each in result:
-                            p.deck.addCard(each)
-                            
-                    else: # If the CPU did not have the card
-                        goFish = True #End the player's turn
-                        print("Go Fish!")
-                        p.deck.addCard(sea.draw())
                         
                 else: #It is the CPU's turn
-                    continue
+                    play = p.getPlay()
+                    asked = play[0]
+                    askedFor = play[1]
+                
+                global mem
+                mem.addMemory(p, askedFor)
+                    
+                result = asked.ask(asked.name, askedFor)
+                print(asked.name+", do you have any "+str(askedFor)+"\'s?")
+                    
+                if len(result) >= 1:  #If the CPU asked had what the user asked for
+                    #Add the cards to the user's hand
+                    print("Yes!\n")
+                    for each in result:
+                        p.deck.addCard(each)
+                           
+                else: # If the CPU did not have the card
+                    goFish = True #End the player's turn
+                    print("Go Fish!\n")
+                    p.deck.addCard(sea.draw())                
                     
 main()
+
+#Changes to make:
+#Med and Hard Modes
+#Cannot ask for the same card back to back unless that is the only card they have
+#organize cards, show score
+# J, Q, K are numbers
+#If CPU is out of cards, ask for random card
