@@ -1,4 +1,5 @@
 from random import *
+from time import sleep
 
 class Deck():
     def __init__(self, name):
@@ -102,30 +103,58 @@ class Deck():
             self.removeCard(each)
         
         if len(removed) >= 1:
-            print(self.name+" scored a set of "+str(removed[0].value)+"\'s\n")
+            scoredString = removed[0].value
+            if scoredString == 11:
+                scoredString = 'J'
+            elif scoredString == 12:
+                scoredString = "Q"
+            elif scoredString == 13:
+                scoredString = "K"
+                
+            print(self.name+" scored a set of "+str(scoredString)+"\'s\n")
             
         return removed
                 
-        
+    def order(self):
+        newCards = []
+        for card in self.cards:
+            inserted = False
+            if len(newCards) == 0:
+                newCards.append(card)
+                continue
+            for i in range(0, len(newCards)):
+                if card.value < newCards[i].value:
+                    newCards.insert(i, card)
+                    inserted = True
+                    break
+            if not inserted:
+                newCards.append(card)
+        self.cards = newCards
+                
+            
                 
     def __str__(self):
+        self.order()
         cardString = []
     
-        for each in self.cards:
-            if each != None:
-                cardString.append(str(each).split('\n'))
+        for i in range(0, len(self.cards)):
+            if i%5 == 0:
+                cardString.append([])
+                j = i//5
+            cardString[j].append(str(self.cards[i]).split('\n'))
                 
         if len(cardString) == 0:
             return ''        
         
         output = ''
-        for j in range (0, len(cardString[1])):
-            for i in range(0, len(cardString)):
-                try:
-                    output+= cardString[i][j]+ ' '
-                except:
-                    continue
-            output+= '\n'
+        for k in range(0, len(cardString)):
+            for j in range (0, len(cardString[k][0])):
+                for i in range(0, len(cardString[k])):
+                    try:
+                        output+= cardString[k][i][j]+ ' '
+                    except:
+                        continue
+                output+= '\n'
         return output
     
     def draw(self):
@@ -253,11 +282,24 @@ class Computer(Player):
         super().__init__(name)
         self.otherPlayers = []
         self.lastCard = -1
+        self.memory = []
+        
     
     def setOtherPlayers(self, players):
         for each in players:
             if self != each:
-                self.otherPlayers.append(each)     
+                self.otherPlayers.append(each)
+            self.memory.append(PlayerData(each))
+        
+    #After someone asks for a card, the probability that each person has each card is updated
+    def updateMemories(self, asker, number, giver=None):
+        for each in self.memory:
+            if each == asker:
+                asker = each
+            if each == giver:
+                giver = each
+        #Actually update the PlayerData
+        
     
     #returns player to ask and which card to ask for 
     def getPlay(self):
@@ -304,30 +346,32 @@ class Computer(Player):
         #mode == hard
         return 
 
-class Memories:
-    def __init__(self):
-        self.memory = {1:[], 2:[], 3:[], 4:[], 5:[], 6:[], 7:[], 8:[], 9:[], 10:[], 11:[], 12:[], 13:[]}
-    
-    def addMemory(self, asker, card):
-        alreadyThere = False
-        for each in self.memory[card]:
-            if each == asker:
-                alreadyThere = True
-                break
-        if not alreadyThere:
-            self.memory[card].append(asker)
-    
-    def removeMemory(self, asker, card):
-        if asker in self.memory[card]:
-            self.memory[card].remove(asker)
-    
-    #Returns who asked for a certain value card
-    def whoAsked(self, card):
-        asked = self.memory[card]
-        return asked
-            
-mem = Memories()
+class PlayerData():
+    class NumberData():
+        def __init__ (self, number):
+            self.number = number
+            self.data = [0, 0, 0]
+        
+        def hasOne(self):
+            return self.data[0]
+        
+        def hasOne(self):
+            return self.data[1]     
+        
+        def hasThree(self):
+            return self.data[2] 
+        
+        
+    def __init__(self, player):
+        self.player = player
+        self.numbers = []
+        for each in range(1, 14):
+            self.numbers.append(self.NumberData(each))
+        
+        
+        
 gPlayers = []
+cardsNotScored = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 
 def main():
     #Intro to game
@@ -373,10 +417,11 @@ def main():
 
     while discarded.getSize() < 52:    #Play the game while there are still cards to play 
         print("Player:\t\tScore:\tNumber of Cards:")
-        print("-------\t\t------\t----------------")        
+        print("-------\t\t------\t----------------")
         for p in players:
             print(p.name+"\t\t"+str(p.score)+"\t"+str(p.deck.getSize()))
         print('')
+
             
         for p in players:              #Give each player a turn
             goFish = False
@@ -386,6 +431,7 @@ def main():
                     break
                 
                 if type(p) == Player:  #If human user's turn, not CPU
+                    sleep(2)
                     print(p.deck)
                     
                     if numPlayers >= 3:#If the user needs to specify who they are asking
@@ -431,8 +477,6 @@ def main():
                     askedFor = play[1]
                     print(p.name, "asks:")
                 
-                global mem
-                mem.addMemory(p, askedFor)
                     
                 result = asked.ask(asked.name, askedFor)
                 if askedFor == 11:
@@ -446,12 +490,22 @@ def main():
                     
                 if len(result) >= 1:  #If the CPU asked had what the user asked for
                     #Add the cards to the user's hand
-                    print("Yes!\n")
+                    print("Yes!\n")  
+                    
+                    for person in players:
+                        if type(person) == Computer:
+                            person.updateMemories(p, askedFor, asked)                    
+
                     for each in result:
                         p.deck.addCard(each)
                            
                 else: # If the CPU did not have the card
                     goFish = True #End the player's turn
+                    
+                    for person in players:
+                        if type(person) == Computer:
+                            person.updateMemories(p, askedFor)
+                    
                     print("Go Fish!\n")
                     p.deck.addCard(sea.draw())
                 
@@ -459,11 +513,13 @@ def main():
     
                 if len(scored) > 1:
                     p.score += 1
+                    global cardsNotScored
+                    cardsNotScored.remove(scored[1].value)
                         
                 for each in scored:#Discard 4 of a kind once scored
-                    global mem
-                    mem.removeMemory(p, each.value)
                     discarded.addCard(each) 
+                    
+                sleep(1)
     
     #Once game is over 
     winner = ("name", 0)
@@ -478,5 +534,5 @@ main()
 
 #Changes to make:
 #Med and Hard Modes
-#organize cards
-
+#record what was asked for in CPU's turn so that it can never ask for same card from same person in same turn
+#make cards shorter
