@@ -5,6 +5,9 @@ class Deck():
     def __init__(self, name):
         self.name = name
         self.cards = []
+    
+    def __len__(self):
+        return len(self.cards)
         
     def setName(self, name):
         self.name = name
@@ -292,13 +295,114 @@ class Computer(Player):
             self.memory.append(PlayerData(each))
         
     #After someone asks for a card, the probability that each person has each card is updated
-    def updateMemories(self, asker, number, giver=None):
+    def updateMemories(self, asker, number, asked, result):
+        for i in range(len(self.memory)):
+            if self.memory[i].player == asker:
+                asker = i
+            elif self.memory[i].player == asked:
+                asked = i
+        
+        self.memory[asked].update(number, [0, 0, 0])
+        prob = [None, None, None]
+        for each in range(1, result+1):
+            prob[each-1] = 1
+
+        if result <= 2:
+            if self.memory[asker].numbers[number-1].data[result] != 1:
+                prob[result] = .99
+        self.memory[asker].update(number, prob)
+        
+        self.updateOwnMemory()
+        
+        for card in range(1, 14):
+            x = self.numCardsFound(card) #I know where x number of (card) cards are
+            global cardsInDeck
+            for p in self.memory:
+                if p.player == self:
+                    continue
+                numCardsNotKnown = self.getUnknown(p) #How many of their cards could be a certain card
+                totalUnknown = 0 #How many of all players cards are unknown
+                doesntHave = self.getDoesntHave(p, card) #Cards known that the player doesn't have
+                for p2 in self.memory:
+                    totalUnknown+= self.getUnknown(p)
+                for amount in range(1, 4):
+                    if p.numbers[card-1].data[amount-1] >= .99 or p.numbers[card-1].data[amount-1] == 0:
+                        continue
+                    elif p.numbers[card-1].data[amount-1] == None:
+                        break
+                    if amount == 1:
+                        prob = (4-x)*numCardsNotKnown/(totalUnknown+cardsInDeck-doesntHave)
+                        p.numbers[card-1].data[amount-1] = prob
+                    if amount == 2:
+                        prob = (3-x)*(numCardsNotKnown-1)/(totalUnknown+cardsInDeck-1-doesntHave)
+                        if prob < 0:
+                            prob = 0
+                        p.numbers[card-1].data[amount-1] = prob*p.numbers[card-1].data[amount-2]
+                    if amount == 3:
+                        prob = prob = (2-x)*(numCardsNotKnown-2)/(totalUnknown+cardsInDeck-2-doesntHave)
+                        if prob < 0:
+                            prob = 0
+                        p.numbers[card-1].data[amount-1] = prob*p.numbers[card-1].data[amount-3]
+                                   
         for each in self.memory:
-            if each == asker:
-                asker = each
-            if each == giver:
-                giver = each
-        #Actually update the PlayerData
+            print(each)
+    
+    #Number cards player doesn't have   
+    def getDoesntHave(self, p, card): 
+        total = 0
+        for each in p.numbers:
+            if each.number == card:
+                continue
+            for i in range (0, 3):
+                if each.data[i] == 0:
+                    if 4-self.numCardsFound(each)-i >= 0:
+                        total += 4-self.numCardsFound(each.number)-i
+        return total
+    
+    #Update memory after player p went fish indicating that they could have any card now
+    def wentFish(self, p):
+        for each in self.memory:
+            if each.player == p:
+                p = each
+        for card in p.numbers:
+            for amount in range(0, 3):
+                if card.data[amount] == 0 and 4-self.numCardsFound(card) >= amount+1:
+                    card.data[amount] = .1 ###
+                    break
+        return
+
+    #How many of a certain card that has unknown ownership
+    def numCardsFound(self, card):
+        numFound = 0
+        if type(card) != int:
+            card = card.number
+        for each in self.memory:
+            for i in range(0, 3):
+                if each.numbers[card-1].data[i] >= 0.99:
+                    numFound += 1
+        return numFound
+    
+    #Returns amount of cards player has that I don't know the value of
+    def getUnknown(self, p):
+        numUnknown = len(p.player.deck)
+        for num in p.numbers:
+            for amount in range(0, 3):
+                if num.data[amount] >= 0.99:
+                    numUnknown -= 1
+        if numUnknown < 0:
+            numUnknown = 0
+        return numUnknown
+    
+    #Updates memory to indicate a set of cards has been scored, removing them from play
+    def memoryAddScore(self, number):
+        for each in self.memory:
+            each.numbers[number-1].data = [None, None, None]
+    
+    def updateOwnMemory(self):
+        for i in range(len(self.memory)):
+            if self.memory[i].player == self:
+                break
+        self.memory[i].knownDeck(self.deck)
         
     
     #returns player to ask and which card to ask for 
@@ -350,28 +454,43 @@ class PlayerData():
     class NumberData():
         def __init__ (self, number):
             self.number = number
-            self.data = [0, 0, 0]
-        
-        def hasOne(self):
-            return self.data[0]
-        
-        def hasOne(self):
-            return self.data[1]     
-        
-        def hasThree(self):
-            return self.data[2] 
-        
+            self.data = [0.1, 0.1, 0.1]
         
     def __init__(self, player):
         self.player = player
         self.numbers = []
         for each in range(1, 14):
             self.numbers.append(self.NumberData(each))
+    
+    def update(self, card, probability):
+        for each in self.numbers:
+            if each.number == card:
+                for i in range(0, 3):
+                    if probability[i] != None:
+                        each.data[i] = probability[i]
+                        
+    def knownDeck(self, deck):
+        for each in self.numbers:
+            each.data = [0, 0, 0]
+        for card in deck.cards:
+            for each in range(0, 3):
+                if self.numbers[card.value-1].data[each] != 100:
+                    self.numbers[card.value-1].data[each] = 100
+                    break
+                
+                        
+    def __str__(self):
+        output = self.player.name
+        for each in self.numbers:
+            output += '\n'+str(each.number)+ ' ' + str(each.data)
+        
+        return output
         
         
         
 gPlayers = []
 cardsNotScored = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+cardsInDeck = 52
 
 def main():
     #Intro to game
@@ -480,21 +599,19 @@ def main():
                     
                 result = asked.ask(asked.name, askedFor)
                 if askedFor == 11:
-                    askedFor = 'J'
+                    askedForString = 'J'
                 elif askedFor == 12:
-                    askedFor = 'Q'
+                    askedForString = 'Q'
                 elif askedFor == 13:
-                    askedFor = 'K'
+                    askedForString = 'K'
+                else:
+                    askedForString = askedFor
                     
-                print(asked.name+", do you have any "+str(askedFor)+"\'s?")
+                print(asked.name+", do you have any "+str(askedForString)+"\'s?")
                     
                 if len(result) >= 1:  #If the CPU asked had what the user asked for
                     #Add the cards to the user's hand
-                    print("Yes!\n")  
-                    
-                    for person in players:
-                        if type(person) == Computer:
-                            person.updateMemories(p, askedFor, asked)                    
+                    print("Yes!\n")                     
 
                     for each in result:
                         p.deck.addCard(each)
@@ -502,19 +619,26 @@ def main():
                 else: # If the CPU did not have the card
                     goFish = True #End the player's turn
                     
-                    for person in players:
-                        if type(person) == Computer:
-                            person.updateMemories(p, askedFor)
-                    
                     print("Go Fish!\n")
                     p.deck.addCard(sea.draw())
+                    global cardsInDeck
+                    cardsInDeck = len(sea)
                 
                 scored = p.deck.hasFour()
+                
+                for person in players:
+                    if type(person) == Computer:
+                        person.updateMemories(p, askedFor, asked, len(result))
+                        if goFish and person != p:
+                            person.wentFish(p)
     
                 if len(scored) > 1:
                     p.score += 1
                     global cardsNotScored
                     cardsNotScored.remove(scored[1].value)
+                    for person in players:
+                        if type(person) == Computer:
+                            person.memoryAddScore(scored[1].value)
                         
                 for each in scored:#Discard 4 of a kind once scored
                     discarded.addCard(each) 
@@ -526,7 +650,7 @@ def main():
     print("Player:\t\tScore:")
     print("-------\t\t------")        
     for p in players:
-        print(p.name+"\t\t"+str(p.score)+"\t"+str(p.deck.getSize()))
+        print(p.name+"\t\t"+str(p.score)+"\t")
         if p.score > winner[1]:
             winner = (p.name, p.score)
     print("Winner is", winner[0],"!!!")
@@ -535,4 +659,4 @@ main()
 #Changes to make:
 #Med and Hard Modes
 #record what was asked for in CPU's turn so that it can never ask for same card from same person in same turn
-#make cards shorter
+#make cards shorter                                                                                                   
