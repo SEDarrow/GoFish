@@ -278,21 +278,24 @@ class Player:
         return result
         
 class Computer(Player):
-    names = ["Carl", "Cameron", "Claire", "Cass", "Cody"]
+    names = ["Carl", "Cameron", "Claire", "Cass", "Cody", "Connie"]
     def __init__ (self, mode):
-        self.mode = mode
+        self.mode = mode  
         name = self.names.pop(randint(0, len(self.names)-1))
         super().__init__(name)
         self.otherPlayers = []
         self.lastCard = -1
         self.memory = []
+        self.cardsInDeck = 52
         
-    
     def setOtherPlayers(self, players):
         for each in players:
             if self != each:
                 self.otherPlayers.append(each)
             self.memory.append(PlayerData(each))
+            
+    def updateCardsInDeck(self, cID):
+        self.cardsInDeck = cID
         
     #After someone asks for a card, the probability that each person has each card is updated
     def updateMemories(self, asker, number, asked, result):
@@ -316,7 +319,6 @@ class Computer(Player):
         
         for card in range(1, 14):
             x = self.numCardsFound(card) #I know where x number of (card) cards are
-            global cardsInDeck
             for p in self.memory:
                 if p.player == self:
                     continue
@@ -326,26 +328,34 @@ class Computer(Player):
                 for p2 in self.memory:
                     totalUnknown+= self.getUnknown(p)
                 for amount in range(1, 4):
-                    if p.numbers[card-1].data[amount-1] >= .99 or p.numbers[card-1].data[amount-1] == 0:
+                    if p.numbers[card-1].data[amount-1] == None:
+                        break                    
+                    elif p.numbers[card-1].data[amount-1] >= .99 or p.numbers[card-1].data[amount-1] == 0:
                         continue
-                    elif p.numbers[card-1].data[amount-1] == None:
-                        break
+
                     if amount == 1:
-                        prob = (4-x)*numCardsNotKnown/(totalUnknown+cardsInDeck-doesntHave)
+                        try:
+                            prob = (4-x)*numCardsNotKnown/(totalUnknown+self.cardsInDeck-doesntHave)
+                        except ZeroDivisionError:
+                            prob = 1
                         p.numbers[card-1].data[amount-1] = prob
                     if amount == 2:
-                        prob = (3-x)*(numCardsNotKnown-1)/(totalUnknown+cardsInDeck-1-doesntHave)
+                        try:
+                            prob = (3-x)*(numCardsNotKnown-1)/(totalUnknown+self.cardsInDeck-1-doesntHave)
+                        except ZeroDivisionError:
+                            prob = 1                        
                         if prob < 0:
                             prob = 0
                         p.numbers[card-1].data[amount-1] = prob*p.numbers[card-1].data[amount-2]
                     if amount == 3:
-                        prob = prob = (2-x)*(numCardsNotKnown-2)/(totalUnknown+cardsInDeck-2-doesntHave)
+                        try:
+                            prob = prob = (2-x)*(numCardsNotKnown-2)/(totalUnknown+self.cardsInDeck-2-doesntHave)
+                        except ZeroDivisionError:
+                            prob = 1                           
                         if prob < 0:
                             prob = 0
                         p.numbers[card-1].data[amount-1] = prob*p.numbers[card-1].data[amount-3]
                                    
-        for each in self.memory:
-            print(each)
     
     #Number cards player doesn't have   
     def getDoesntHave(self, p, card): 
@@ -378,7 +388,7 @@ class Computer(Player):
             card = card.number
         for each in self.memory:
             for i in range(0, 3):
-                if each.numbers[card-1].data[i] >= 0.99:
+                if each.numbers[card-1].data[i] != None and each.numbers[card-1].data[i] >= 0.99:
                     numFound += 1
         return numFound
     
@@ -387,6 +397,8 @@ class Computer(Player):
         numUnknown = len(p.player.deck)
         for num in p.numbers:
             for amount in range(0, 3):
+                if num.data[amount] == None:
+                    break
                 if num.data[amount] >= 0.99:
                     numUnknown -= 1
         if numUnknown < 0:
@@ -424,6 +436,21 @@ class Computer(Player):
             wanted[1] = wanted[1]
         
         if self.mode == "Easy":
+            if len(self.otherPlayers) == 1:
+                target = self.otherPlayers[0]
+            else:
+                target = self.otherPlayers[randint(0, len(self.otherPlayers)-1)]
+                
+            if len(self.deck) == 1:
+                card = self.deck.cards[0].value
+            elif len(self.deck) == 0:
+                card = randint(1,13)
+            else:
+                card = self.deck.cards[randint(0, len(self.deck.cards)-1)].value
+            
+            return target, card
+            
+        elif self.mode == "Med":
             if len(self.deck.cards) == 1:
                 card = self.deck.cards[0].value
             else:
@@ -444,9 +471,27 @@ class Computer(Player):
             self.lastCard = card
             return target, card
             
-        elif self.mode == "Med":
-            return
-        
+        else: #Hard Mode
+            greatest = (0, self.otherPlayers[0], randint(1,13))
+            goodOption = False
+            for i in range(3, 0, -1):
+                if len(wanted[i]) != 0:
+                    for card in wanted[i]:
+                        numKnown = 0
+                        for player in self.memory:
+                            if player.player == self:
+                                continue
+                            if goodOption == False:
+                                if player.numbers[card-1].data[0] > greatest[0]:
+                                    greatest = (player.numbers[card-1].data[0], player.player, card)
+                            else:
+                                if player.numbers[card-1].data[0] >= .99:
+                                    numKnown += 1
+                                    whoHas = player.player
+                        if numKnown >= (4-i):
+                            greatest = (100, whoHas, card)
+                        goodOption = True
+            return greatest[1], greatest[2]
         #mode == hard
         return 
 
@@ -473,6 +518,8 @@ class PlayerData():
         for each in self.numbers:
             each.data = [0, 0, 0]
         for card in deck.cards:
+            if card == None:
+                break
             for each in range(0, 3):
                 if self.numbers[card.value-1].data[each] != 100:
                     self.numbers[card.value-1].data[each] = 100
@@ -486,45 +533,53 @@ class PlayerData():
         
         return output
         
-        
-        
-gPlayers = []
-cardsNotScored = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
-cardsInDeck = 52
+def setupGame(testing=False):
+    if testing:
+        return
+    else:
+        print(">( o)3 Welcome to GO FISH!!! >( o)3\n")
+        difficulty = ''
+        while difficulty != 'Easy' and difficulty != 'Med' and difficulty != 'Hard':
+            difficulty = input("Choose a difficulty(Easy / Med / Hard): ")
+        numPlayers = 0
+    
+        while numPlayers <= 1 or numPlayers > 4:
+            try:
+                numPlayers = int(input("How many players would you like? (max 4) "))
+            except ValueError:
+                numPlayers = 0
+            
+        name = input("What is your name? ")
+        print("\nHi "+name+"! The game is starting!\n")
+    
+        sea = Deck("Sea")
+        sea.makeDefaultDeck()
+        sea.shuffle()
+
+        #Creating a deck for everyone
+        decks = sea.deal(numPlayers, numPlayers*5)
+    
+        #Creating a dictionary of players with their decks
+        decks[0].setName(name)
+        players = [Player(name)]
+        players[0].setDeck(decks[0])
+        for i in range(1, numPlayers):
+            p = Computer(difficulty)
+            decks[i].setName(p.getName())
+            p.setDeck(decks[i])
+            players.append(p)
+            
+        return players, sea
+    
 
 def main():
     #Intro to game
-    print(">( o)3 Welcome to GO FISH!!! >( o)3\n")
-    difficulty = ''
-    while difficulty != 'Easy' and difficulty != 'Med' and difficulty != 'Hard':
-        difficulty = input("Choose a difficulty(Easy / Med / Hard): ")
-    numPlayers = 0
+    cardsInDeck = 52
+    Computer.names = ["Carl", "Cameron", "Claire", "Cass", "Cody", "Connie"]
     
-    while numPlayers <= 1 or numPlayers > 4:
-        try:
-            numPlayers = int(input("How many players would you like? (max 4) "))
-        except ValueError:
-            numPlayers = 0
-            
-    name = input("What is your name? ")
-    print("\nHi "+name+"! The game is starting!\n")
-    
-    sea = Deck("Sea")
-    sea.makeDefaultDeck()
-    sea.shuffle()
-    
-    #Creating a deck for everyone
-    decks = sea.deal(numPlayers, numPlayers*5)
-    
-    #Creating a dictionary of players with their decks
-    decks[0].setName(name)
-    players = [Player(name)]
-    players[0].setDeck(decks[0])
-    for i in range(1, numPlayers):
-        p = Computer(difficulty)
-        decks[i].setName(p.getName())
-        p.setDeck(decks[i])
-        players.append(p)
+    setup = setupGame()
+    players = setup[0]
+    sea = setup[1]
     
     #Where cards go after scored    
     discarded = Deck("Discard")
@@ -540,8 +595,7 @@ def main():
         for p in players:
             print(p.name+"\t\t"+str(p.score)+"\t"+str(p.deck.getSize()))
         print('')
-
-            
+ 
         for p in players:              #Give each player a turn
             goFish = False
             p.deck.fix()
@@ -550,10 +604,10 @@ def main():
                     break
                 
                 if type(p) == Player:  #If human user's turn, not CPU
-                    sleep(2)
+                    #sleep(2)
                     print(p.deck)
                     
-                    if numPlayers >= 3:#If the user needs to specify who they are asking
+                    if len(players) >= 3:#If the user needs to specify who they are asking
                         asked = input("Who would you like to ask for a card? ")
                         
                         #Get the CPU object based on the name inputed
@@ -596,7 +650,6 @@ def main():
                     askedFor = play[1]
                     print(p.name, "asks:")
                 
-                    
                 result = asked.ask(asked.name, askedFor)
                 if askedFor == 11:
                     askedForString = 'J'
@@ -616,26 +669,24 @@ def main():
                     for each in result:
                         p.deck.addCard(each)
                            
-                else: # If the CPU did not have the card
+                else: # If the player did not have the card
                     goFish = True #End the player's turn
                     
                     print("Go Fish!\n")
                     p.deck.addCard(sea.draw())
-                    global cardsInDeck
                     cardsInDeck = len(sea)
                 
                 scored = p.deck.hasFour()
                 
                 for person in players:
                     if type(person) == Computer:
+                        person.updateCardsInDeck(cardsInDeck)
                         person.updateMemories(p, askedFor, asked, len(result))
                         if goFish and person != p:
                             person.wentFish(p)
     
                 if len(scored) > 1:
                     p.score += 1
-                    global cardsNotScored
-                    cardsNotScored.remove(scored[1].value)
                     for person in players:
                         if type(person) == Computer:
                             person.memoryAddScore(scored[1].value)
@@ -643,7 +694,7 @@ def main():
                 for each in scored:#Discard 4 of a kind once scored
                     discarded.addCard(each) 
                     
-                sleep(1)
+                #sleep(1)
     
     #Once game is over 
     winner = ("name", 0)
@@ -652,11 +703,21 @@ def main():
     for p in players:
         print(p.name+"\t\t"+str(p.score)+"\t")
         if p.score > winner[1]:
-            winner = (p.name, p.score)
+            winner = (p.name, p.score, p)
     print("Winner is", winner[0],"!!!")
-main()
+    if type(winner[2]) != Computer:
+        return 1
+    return 0
+    
 
-#Changes to make:
-#Med and Hard Modes
-#record what was asked for in CPU's turn so that it can never ask for same card from same person in same turn
-#make cards shorter                                                                                                   
+keepPlaying = "Y"
+timesPlayed= 0
+timesWon = 0
+while(keepPlaying == "Y"):
+    timesWon += main()
+    timesPlayed += 1
+    keepPlaying = input("\nDo you want to play again? (Y/N) ")
+
+print("You won", timesWon, "out of", timesPlayed, "games!")
+    
+            
