@@ -299,6 +299,9 @@ class Computer(Player):
         
     #After someone asks for a card, the probability that each person has each card is updated
     def updateMemories(self, asker, number, asked, result):
+        if self.mode != "Hard":
+            return 
+        
         for i in range(len(self.memory)):
             if self.memory[i].player == asker:
                 asker = i
@@ -411,6 +414,9 @@ class Computer(Player):
             each.numbers[number-1].data = [None, None, None]
     
     def updateOwnMemory(self):
+        if self.mode != "Hard":
+            return     
+        
         for i in range(len(self.memory)):
             if self.memory[i].player == self:
                 break
@@ -472,26 +478,21 @@ class Computer(Player):
             return target, card
             
         else: #Hard Mode
-            greatest = (0, self.otherPlayers[0], randint(1,13))
+            greatest = (0, 0, self.otherPlayers[0], randint(1,13))
             goodOption = False
-            for i in range(3, 0, -1):
-                if len(wanted[i]) != 0:
-                    for card in wanted[i]:
-                        numKnown = 0
+            
+            for i in range(3, 0, -1): #for each frequency of card in hand
+                if len(wanted[i]) != 0: #if there are cards of frequency i in hand
+                    for card in wanted[i]: 
                         for player in self.memory:
-                            if player.player == self:
+                            if player.player == self: #don't look at own card stats
                                 continue
-                            if goodOption == False:
-                                if player.numbers[card-1].data[0] > greatest[0]:
-                                    greatest = (player.numbers[card-1].data[0], player.player, card)
-                            else:
-                                if player.numbers[card-1].data[0] >= .99:
-                                    numKnown += 1
-                                    whoHas = player.player
-                        if numKnown >= (4-i):
-                            greatest = (100, whoHas, card)
-                        goodOption = True
-            return greatest[1], greatest[2]
+                            if player.numbers[card-1].data[0]+player.numbers[card-1].data[1]> greatest[0]: #Sum of probability of having one card and probability of having 2 cards
+                                if player.numbers[card-1].data[0] > 75 or greatest[1] == 0 or (player.numbers[card-1].data[0]+player.numbers[card-1].data[1])-(.1)*(greatest[1]-i) > greatest[0]: 
+                                #If better option is found, choose to ask for that card
+                                #A card of lower frequency in asker's deck is "better" only if the probability that a player has it is significantly higher or very probable (above 75%)
+                                    greatest = (player.numbers[card-1].data[0]+player.numbers[card-1].data[1], i, player.player, card)
+            return greatest[2], greatest[3] #player, card
         #mode == hard
         return 
 
@@ -533,9 +534,25 @@ class PlayerData():
         
         return output
         
-def setupGame(testing=False):
+def setupGame(testing=False, modes=None):
     if testing:
-        return
+        players = []
+        for mode in modes:
+            players.append(Computer(mode))
+            
+        sea = Deck("Sea")
+        sea.makeDefaultDeck()
+        sea.shuffle()
+            
+        #Creating a deck for everyone
+        decks = sea.deal(len(players), len(players)*5)
+        
+        for i in range(0, len(players)):
+            decks[i].setName(decks[i].getName())
+            players[i].setDeck(decks[i])
+        
+        return players, sea
+            
     else:
         print(">( o)3 Welcome to GO FISH!!! >( o)3\n")
         difficulty = ''
@@ -572,12 +589,15 @@ def setupGame(testing=False):
         return players, sea
     
 
-def main():
+def game(testing = False, modes = None):
     #Intro to game
     cardsInDeck = 52
     Computer.names = ["Carl", "Cameron", "Claire", "Cass", "Cody", "Connie"]
     
-    setup = setupGame()
+    if testing:
+        setup = setupGame(True, modes)
+    else:
+        setup = setupGame()
     players = setup[0]
     sea = setup[1]
     
@@ -703,21 +723,37 @@ def main():
     for p in players:
         print(p.name+"\t\t"+str(p.score)+"\t")
         if p.score > winner[1]:
-            winner = (p.name, p.score, p)
+            winner = (p.name, p.score, p, p.mode)
     print("Winner is", winner[0],"!!!")
+    
+    if testing:
+        return winner[3]
+    
     if type(winner[2]) != Computer:
         return 1
     return 0
     
+def play():
+    keepPlaying = "Y"
+    timesPlayed= 0
+    timesWon = 0
+    while(keepPlaying == "Y"):
+        timesWon += game()
+        timesPlayed += 1
+        keepPlaying = input("\nDo you want to play again? (Y/N) ")
 
-keepPlaying = "Y"
-timesPlayed= 0
-timesWon = 0
-while(keepPlaying == "Y"):
-    timesWon += main()
-    timesPlayed += 1
-    keepPlaying = input("\nDo you want to play again? (Y/N) ")
-
-print("You won", timesWon, "out of", timesPlayed, "games!")
+    print("You won", timesWon, "out of", timesPlayed, "games!")
     
-            
+def test():
+    modes = [['Easy', "Hard"], ['Hard', 'Med'], ["Hard", "Easy", "Med"]]
+    for each in modes[0:2]:
+        modes.append(each*2)
+    
+    for each in modes:
+        winner = game(True, each)
+        file = open("Results.txt", 'a')
+        file.write(winner+str(each)+ "\n")
+        file.close
+    return winner
+
+play()
